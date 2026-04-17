@@ -1,0 +1,22 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "nodemon index.js",
+    "mtproto:login": "node scripts/mtproto-login.mjs",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "big-integer": "^1.6.52",
+    "dotenv": "^16.6.1",
+    "express": "^5.2.1",
+    "nodemon": "^3.1.14",
+    "telegram": "^2.26.22"
+  }
+}
