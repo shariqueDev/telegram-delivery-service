@@ -13,12 +13,15 @@ export function createTelegramDeliverController(telegramDeliverService) {
       });
 
       if (!result.ok) {
-        res.status(result.httpStatus).json({ ok: false, error: result.error });
+        res
+          .status(result.httpStatus)
+          .json({ ok: false, error: result.error, requestId: req.requestId });
         return;
       }
 
       res.status(200).json({
         ok: true,
+        requestId: req.requestId,
         delivered: result.delivered,
         link: result.link,
         ...(result.telegramAppDeepLink ? { telegramAppDeepLink: result.telegramAppDeepLink } : {}),

@@ -4,7 +4,11 @@
 export function corsMiddleware(req, res, next) {
   res.setHeader("Access-Control-Allow-Origin", process.env.CORS_ORIGIN ?? "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, X-Request-Id",
+  );
+  res.setHeader("Access-Control-Expose-Headers", "X-Request-Id");
 
   if (req.method === "OPTIONS") {
     res.sendStatus(204);

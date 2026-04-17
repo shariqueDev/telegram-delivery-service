@@ -7,8 +7,8 @@ export function createHealthRouter() {
     res.type("text/plain").send("Telegram link delivery API");
   });
 
-  r.get("/health", (_req, res) => {
-    res.json({ ok: true });
+  r.get("/health", (req, res) => {
+    res.json({ status: true, requestId: req.requestId });
   });
 
   return r;
