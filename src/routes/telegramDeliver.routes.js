@@ -12,6 +12,7 @@ export function createTelegramDeliverRouter(deps) {
   const botController = createTelegramDeliverController(deps.telegramDeliverService);
   const mtprotoController = createMtprotoDeliverController(deps.mtprotoDeliverService);
 
+  //bot
   r.post("/deliver", (req, res, next) => {
     botController.deliver(req, res).catch(next);
   });

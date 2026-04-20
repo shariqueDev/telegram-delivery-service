@@ -23,18 +23,16 @@ There is **no database**, **no caller authentication**, and **no queue**—each 
 
 ```mermaid
 flowchart LR
-  A[index.js] --> B[src/server.js]
-  B --> C[dotenv: load .env from project root]
-  B --> D[loadEnv from config/env.js]
-  B --> E[createApp]
+  A[index.js] --> C[dotenv: load .env from project root]
+  A --> D[loadEnv from config/env.js]
+  A --> E[createApp]
   E --> F[Express + routes]
-  B --> G[listen PORT]
+  A --> G[listen PORT]
 ```
 
-1. **`index.js`** imports `startServer` from `src/server.js` and invokes it.
-2. **`src/server.js`** resolves the **project root** (parent of `src/`), loads **`.env`** from `join(projectRoot, ".env")` via **dotenv**, then calls **`loadEnv()`** (reads `process.env` into a typed config object).
-3. **`createApp(env)`** in `src/app.js` builds Express: CORS, JSON body parser (100 kb cap), creates **two service factories** with the same `env`, mounts the root router, then 404 and global error handlers.
-4. The HTTP server listens on **`env.port`** (default **4000** from `PORT`).
+1. **`index.js`** (project root) loads **`.env`** via **dotenv**, calls **`loadEnv()`** from `src/config/env.js`, **`createApp`**, then **`listen`** on **`PORT`**.
+2. **`createApp(env)`** in `src/app.js` builds Express: CORS, JSON body parser (100 kb cap), creates **two service factories** with the same `env`, mounts the root router, then 404 and global error handlers.
+3. The HTTP server listens on **`env.port`** (default **4000** from `PORT`).
 
 **Important:** Environment variables must be present **before** `loadEnv()` runs. Missing bot token or MTProto fields is detected per-request, not at startup (except implicit empty strings).
 
@@ -44,8 +42,7 @@ flowchart LR
 
 | Path | Responsibility |
 |------|----------------|
-| `index.js` | Entry: `startServer()`. |
-| `src/server.js` | Dotenv path, `loadEnv`, `createApp`, `listen`. |
+| `index.js` | Entry: dotenv, `loadEnv`, `createApp`, `listen`. |
 | `src/app.js` | Express app wiring, service construction, error middleware. |
 | `src/config/env.js` | Maps `process.env` → `AppEnv`. |
 | `src/config/env.types.js` | JSDoc typedef for `AppEnv`. |
@@ -56,9 +53,11 @@ flowchart LR
 | `src/controllers/telegramDeliver.controller.js` | Bot path: body → service → JSON. |
 | `src/controllers/mtprotoDeliver.controller.js` | MTProto path: body → service → JSON. |
 | `src/services/telegramDeliverService.js` | Bot delivery orchestration. |
-| `src/services/mtprotoDeliverService.js` | MTProto delivery + shared client singleton. |
+| `src/services/mtprotoDeliverService.js` | MTProto delivery (account pool, retries, idempotency). |
+| `src/config/mtprotoAccounts.js` | Loads `config/mtproto-accounts.json` (or env JSON / `TELEGRAM_MTPROTO_ACCOUNTS_FILE`). |
+| `config/mtproto-accounts.json` | MTProto session list (`id` + `session` per Telegram user account). |
 | `src/services/telegramClient.js` | `sendMessage` via HTTPS; `tg://` deep-link helper. |
-| `scripts/mtproto-login.mjs` | Interactive login; prints session string for `.env`. |
+| `scripts/mtproto-login.mjs` | Interactive login; prints session string for `config/mtproto-accounts.json`. |
 
 ---
 
@@ -140,7 +139,7 @@ Returns JSON: `{ "ok": true }` for liveness.
 
 Otherwise: **400** `missing_or_invalid_recipient`.
 
-**Configuration:** `TELEGRAM_API_ID` (positive number), `TELEGRAM_API_HASH` (non-empty), `TELEGRAM_MTPROTO_SESSION` (non-empty).
+**Configuration:** `TELEGRAM_API_ID` (positive number), `TELEGRAM_API_HASH` (non-empty), and at least one MTProto session in **`config/mtproto-accounts.json`** (or `TELEGRAM_MTPROTO_ACCOUNTS_FILE` / `TELEGRAM_MTPROTO_ACCOUNTS_JSON`). Session strings are **not** read from `TELEGRAM_MTPROTO_SESSION` in `.env`.
 
 **Success (HTTP 200)** — `sendMessage` succeeded:
 
@@ -249,12 +248,11 @@ sequenceDiagram
   Controller-->>Client: JSON
 ```
 
-**Singleton `TelegramClient`**
+**MTProto account pool (`TelegramClient` per account)**
 
-- Module-level variable `sharedClient` holds one connected client for the process lifetime.
-- First successful request path: construct `StringSession` from `TELEGRAM_MTPROTO_SESSION`, `connect()`, verify `isUserAuthorized()`.
-- If unauthorized after connect: `disconnect()`, set `sharedClient = null`, return **503**.
-- **CJS interop:** GramJS is loaded via **`createRequire(import.meta.url)`** because the `telegram` package is CommonJS and this project uses **ESM** (`"type": "module"`).
+- Sessions are loaded from **`config/mtproto-accounts.json`** (or env overrides; see `src/config/mtprotoAccounts.js`). Not from `TELEGRAM_MTPROTO_SESSION` in `.env`.
+- Each account has its own client, lazy `connect()`, and `isUserAuthorized()` on first use. Unauthorized sessions are disabled for that process.
+- **CJS interop:** GramJS is loaded via **`createRequire`** in session code because the `telegram` package is CommonJS and this project uses **ESM** (`"type": "module"`).
 
 **Recipient resolution**
 
@@ -297,12 +295,12 @@ If `link` is not that shape, the field is omitted.
 1. Ensures **`.env`** exists beside `package.json`; exits with instructions if not.
 2. Loads that file with **dotenv** from an explicit path (not cwd-dependent).
 3. Reads **`TELEGRAM_API_ID`** and **`TELEGRAM_API_HASH`** (optional stripping of surrounding quotes).
-4. Starts **`TelegramClient`** with `StringSession` (empty or existing `TELEGRAM_MTPROTO_SESSION` for re-login).
+4. Starts **`TelegramClient`** with `StringSession` (empty, or first non-dummy session from **`config/mtproto-accounts.json`** for re-login).
 5. Prompts (stdin) for phone, SMS/Telegram code, and optional **2FA** password.
-6. Prints **`TELEGRAM_MTPROTO_SESSION=<string>`** to paste into `.env`.
+6. Prints the session string to paste into **`config/mtproto-accounts.json`** (the `"session"` field for the right account).
 7. Disconnects and closes readline.
 
-**Security:** The session string is a **full account session** for the logged-in user—protect like a password.
+**Security:** Session strings are **full account credentials**—protect `config/mtproto-accounts.json` like a password file; avoid committing real sessions.
 
 ---
 
@@ -311,7 +309,7 @@ If `link` is not that shape, the field is omitted.
 | Package | Role in this project |
 |---------|----------------------|
 | **express** | HTTP server, routing, JSON middleware. |
-| **dotenv** | Load `.env` in `server.js` and in `mtproto-login.mjs`. |
+| **dotenv** | Load `.env` in `index.js` and in `mtproto-login.mjs`. |
 | **telegram** (GramJS) | MTProto client: `TelegramClient`, `StringSession`. |
 | **big-integer** | Safe integer type for `sendMessage` peer when using numeric user id. |
 | **nodemon** | Dev dependency: auto-restart on file changes (`npm start`). |

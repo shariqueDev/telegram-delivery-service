@@ -22,14 +22,14 @@ This repository is a **POC backend**. It does not include a game client, databas
 | Path | Role |
 |------|------|
 | `index.js` | Process entry: starts HTTP server. |
-| `src/server.js` | Loads `.env` from the project root, reads config, listens on `PORT`. |
+| `index.js` | Loads `.env`, `loadEnv`, `createApp`, listens on `PORT`. |
 | `src/app.js` | Express app: CORS, JSON body, routes, 404, error handler. |
 | `src/config/` | Environment types and `loadEnv()`. |
 | `src/middleware/` | CORS helper. |
 | `src/routes/` | HTTP route wiring (`health`, `telegram` deliver routes). |
 | `src/controllers/` | Parse request body, map service result to HTTP JSON. |
 | `src/services/` | **Bot** delivery (`telegramClient`, `telegramDeliverService`) and **MTProto** delivery (`mtprotoDeliverService`). |
-| `scripts/mtproto-login.mjs` | One-time interactive login; prints `TELEGRAM_MTPROTO_SESSION` for `.env`. |
+| `scripts/mtproto-login.mjs` | One-time interactive login; prints a session string to paste into `config/mtproto-accounts.json`. |
 
 ---
 
@@ -66,7 +66,7 @@ Base URL (default): `http://localhost:4000`
 
 | Method | Path | Auth (env) |
 |--------|------|----------------|
-| `POST` | `/api/telegram/deliver-mtproto` | `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `TELEGRAM_MTPROTO_SESSION` |
+| `POST` | `/api/telegram/deliver-mtproto` | `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, sessions in `config/mtproto-accounts.json` |
 
 **Body (JSON)** — same as bot, plus optional username.
 
@@ -97,10 +97,11 @@ Copy `.env.example` to `.env` and fill values. The server loads **`.env` from th
 | `TELEGRAM_BOT_TOKEN` | `/api/telegram/deliver` | Bot token from [@BotFather](https://t.me/BotFather). |
 | `TELEGRAM_API_ID` | MTProto | Integer from [my.telegram.org/apps](https://my.telegram.org/apps). |
 | `TELEGRAM_API_HASH` | MTProto | String from the same page. |
-| `TELEGRAM_MTPROTO_SESSION` | MTProto | String session from `npm run mtproto:login` (secret). |
+| `TELEGRAM_MTPROTO_ACCOUNTS_FILE` | MTProto | Optional path to a JSON account list (defaults to `config/mtproto-accounts.json`). |
+| `TELEGRAM_MTPROTO_ACCOUNTS_JSON` | MTProto | Optional inline JSON account array (e.g. Docker). |
 | `CORS_ORIGIN` | CORS middleware | Optional; defaults to `*`. |
 
-Never commit `.env` or session strings.
+Never commit `.env` or real session strings. The repo may ship **dummy** placeholders in `config/mtproto-accounts.json`; replace them after login.
 
 ---
 
@@ -109,7 +110,7 @@ Never commit `.env` or session strings.
 1. Put `TELEGRAM_API_ID` and `TELEGRAM_API_HASH` in `.env`.
 2. Run: `npm run mtproto:login`
 3. Enter phone, login code, and cloud password if prompted.
-4. Paste the printed `TELEGRAM_MTPROTO_SESSION=...` into `.env`.
+4. Paste the printed session into **`config/mtproto-accounts.json`** under the right `"id"` (replace dummy values).
 5. Restart the server.
 
 ---
@@ -119,7 +120,7 @@ Never commit `.env` or session strings.
 - **Bot route:** Telegram controls who a bot may message; cold DMs to arbitrary ids often fail until the user has started the bot.
 - **MTProto route:** Numeric ids often fail with **“Could not find the input entity”** unless that user is already a **known peer** (dialogs, contacts, etc.). Prefer **`telegramUsername`** when possible. See [Telethon: Entities](https://docs.telethon.dev/en/stable/concepts/entities.html) for the same underlying MTProto idea.
 - **Terms of Service:** Automated or bulk messaging with a **user** account can violate [Telegram ToS](https://telegram.org/tos). Use only for legitimate, low-volume flows you are allowed to run.
-- **Security:** `TELEGRAM_MTPROTO_SESSION` is equivalent to a login cookie; protect the server and `.env` like credentials.
+- **Security:** MTProto session strings are equivalent to login cookies; protect `config/mtproto-accounts.json` and `.env` like credentials.
 
 ---
 

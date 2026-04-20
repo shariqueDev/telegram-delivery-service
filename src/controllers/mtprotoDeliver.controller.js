@@ -4,13 +4,14 @@
 export function createMtprotoDeliverController(mtprotoDeliverService) {
   return {
     async deliver(req, res) {
-      const { telegramUserId, telegramUsername, link, text } = req.body ?? {};
+      const { telegramUserId, telegramUsername, link, text, messageId } = req.body ?? {};
 
       const result = await mtprotoDeliverService.deliverLink({
         telegramUserId,
         telegramUsername,
         link,
         text,
+        messageId,
       });
 
       if (!result.ok) {
@@ -23,8 +24,14 @@ export function createMtprotoDeliverController(mtprotoDeliverService) {
       res.status(200).json({
         ok: true,
         requestId: req.requestId,
+        ...(result.idempotentReplay ? { idempotentReplay: true } : {}),
         delivered: result.delivered,
         transport: result.transport,
+        ...(result.accountId != null ? { accountId: result.accountId } : {}),
+        ...(result.attempts != null ? { attempts: result.attempts } : {}),
+        ...(result.reason != null && result.reason !== undefined
+          ? { reason: result.reason }
+          : {}),
         link: result.link,
         ...(result.telegramUsername ? { telegramUsername: result.telegramUsername } : {}),
         ...(result.telegramUserId ? { telegramUserId: result.telegramUserId } : {}),
