@@ -23,15 +23,15 @@ There is **no database**, **no caller authentication**, and **no queue**—each 
 
 ```mermaid
 flowchart LR
-  A[index.js] --> C[dotenv: load .env from project root]
-  A --> D[loadEnv from config/env.js]
+  A[index.ts / dist/index.js] --> C[dotenv: load .env from project root]
+  A --> D[loadEnv from config/env.ts]
   A --> E[createApp]
   E --> F[Express + routes]
   A --> G[listen PORT]
 ```
 
-1. **`index.js`** (project root) loads **`.env`** via **dotenv**, calls **`loadEnv()`** from `src/config/env.js`, **`createApp`**, then **`listen`** on **`PORT`**.
-2. **`createApp(env)`** in `src/app.js` builds Express: CORS, JSON body parser (100 kb cap), creates **two service factories** with the same `env`, mounts the root router, then 404 and global error handlers.
+1. **`index.ts`** (project root; **`npm run build`** emits **`dist/index.js`**) loads **`.env`** via **dotenv**, calls **`loadEnv()`** from `src/config/env.ts`, **`createApp`**, then **`listen`** on **`PORT`**.
+2. **`createApp(env)`** in `src/app.ts` builds Express: CORS, JSON body parser (100 kb cap), creates **two service factories** with the same `env`, mounts the root router, then 404 and global error handlers.
 3. The HTTP server listens on **`env.port`** (default **4000** from `PORT`).
 
 **Important:** Environment variables must be present **before** `loadEnv()` runs. Missing bot token or MTProto fields is detected per-request, not at startup (except implicit empty strings).
@@ -42,22 +42,21 @@ flowchart LR
 
 | Path | Responsibility |
 |------|----------------|
-| `index.js` | Entry: dotenv, `loadEnv`, `createApp`, `listen`. |
-| `src/app.js` | Express app wiring, service construction, error middleware. |
-| `src/config/env.js` | Maps `process.env` → `AppEnv`. |
-| `src/config/env.types.js` | JSDoc typedef for `AppEnv`. |
-| `src/middleware/cors.middleware.js` | CORS + OPTIONS 204; optional `CORS_ORIGIN`. |
-| `src/routes/index.js` | Mounts health + `/api/telegram/*`. |
-| `src/routes/health.routes.js` | `GET /`, `GET /health`. |
-| `src/routes/telegramDeliver.routes.js` | `POST .../deliver`, `POST .../deliver-mtproto`. |
-| `src/controllers/telegramDeliver.controller.js` | Bot path: body → service → JSON. |
-| `src/controllers/mtprotoDeliver.controller.js` | MTProto path: body → service → JSON. |
-| `src/services/telegramDeliverService.js` | Bot delivery orchestration. |
-| `src/services/mtprotoDeliverService.js` | MTProto delivery (account pool, retries, idempotency). |
-| `src/config/mtprotoAccounts.js` | Loads `config/mtproto-accounts.json` (or env JSON / `TELEGRAM_MTPROTO_ACCOUNTS_FILE`). |
+| `index.ts` / `dist/index.js` | Entry: dotenv, `loadEnv`, `createApp`, `listen`. |
+| `src/app.ts` | Express app wiring, service construction, error middleware. |
+| `src/config/env.ts` | Maps `process.env` → `AppEnv` (TypeScript interface). |
+| `src/middleware/cors.middleware.ts` | CORS + OPTIONS 204; optional `CORS_ORIGIN`. |
+| `src/routes/index.ts` | Mounts health + `/api/telegram/*`. |
+| `src/routes/health.routes.ts` | `GET /`, `GET /health`. |
+| `src/routes/telegramDeliver.routes.ts` | `POST .../deliver`, `POST .../deliver-mtproto`. |
+| `src/controllers/telegramDeliver.controller.ts` | Bot path: body → service → JSON. |
+| `src/controllers/mtprotoDeliver.controller.ts` | MTProto path: body → service → JSON. |
+| `src/services/telegramDeliverService.ts` | Bot delivery orchestration. |
+| `src/services/mtprotoDeliverService.ts` | MTProto delivery (account pool, retries, idempotency). |
+| `src/config/mtprotoAccounts.ts` | Loads `config/mtproto-accounts.json` (or env JSON / `TELEGRAM_MTPROTO_ACCOUNTS_FILE`). |
 | `config/mtproto-accounts.json` | MTProto session list (`id` + `session` per Telegram user account). |
-| `src/services/telegramClient.js` | `sendMessage` via HTTPS; `tg://` deep-link helper. |
-| `scripts/mtproto-login.mjs` | Interactive login; prints session string for `config/mtproto-accounts.json`. |
+| `src/services/telegramClient.ts` | `sendMessage` via HTTPS; `tg://` deep-link helper. |
+| `scripts/mtproto-login.ts` | Interactive login; prints session string for `config/mtproto-accounts.json`. |
 
 ---
 
@@ -71,7 +70,11 @@ Returns plain text: short service label.
 
 ### 4.2 `GET /health`
 
-Returns JSON: `{ "ok": true }` for liveness.
+Returns JSON: `status`, `activeAccounts`, `blockedAccounts`, `requestId` (MTProto pool summary).
+
+### 4.2b `GET /health/accounts`
+
+Returns per-account operational state (no session secrets): `id`, `status` (`healthy` | `flood_wait` | `disabled`), `selectable`, `inFloodUntil` (ISO or `null`), `lastUsedAt` (ISO or `null`), `disabledReason`, plus pool counts. **Do not expose publicly** in production without auth or network restrictions.
 
 ### 4.3 `POST /api/telegram/deliver` (Bot API)
 
@@ -250,7 +253,7 @@ sequenceDiagram
 
 **MTProto account pool (`TelegramClient` per account)**
 
-- Sessions are loaded from **`config/mtproto-accounts.json`** (or env overrides; see `src/config/mtprotoAccounts.js`). Not from `TELEGRAM_MTPROTO_SESSION` in `.env`.
+- Sessions are loaded from **`config/mtproto-accounts.json`** (or env overrides; see `src/config/mtprotoAccounts.ts`). Not from `TELEGRAM_MTPROTO_SESSION` in `.env`.
 - Each account has its own client, lazy `connect()`, and `isUserAuthorized()` on first use. Unauthorized sessions are disabled for that process.
 - **CJS interop:** GramJS is loaded via **`createRequire`** in session code because the `telegram` package is CommonJS and this project uses **ESM** (`"type": "module"`).
 
@@ -263,7 +266,7 @@ sequenceDiagram
 
 ## 7. `telegramAppDeepLink` (optional response field)
 
-Implemented in **`src/services/telegramClient.js`**:
+Implemented in **`src/services/telegramClient.ts`**:
 
 - If `link` is a valid **`https://` URL** whose host is **`t.me`** or **`telegram.me`**, the service parses `pathname` (first segment = bot/username) and optional `start` query param, then builds:
 
@@ -277,7 +280,7 @@ If `link` is not that shape, the field is omitted.
 
 ## 8. CORS
 
-**`src/middleware/cors.middleware.js`** sets:
+**`src/middleware/cors.middleware.ts`** sets:
 
 - `Access-Control-Allow-Origin` from `process.env.CORS_ORIGIN` or `*`
 - Methods: `GET`, `POST`, `OPTIONS`
@@ -288,7 +291,7 @@ If `link` is not that shape, the field is omitted.
 
 ## 9. MTProto login script
 
-**Command:** `npm run mtproto:login` → runs **`scripts/mtproto-login.mjs`**.
+**Command:** `npm run mtproto:login` → runs **`scripts/mtproto-login.ts`** (via `tsx`).
 
 **Behavior**
 
@@ -309,10 +312,10 @@ If `link` is not that shape, the field is omitted.
 | Package | Role in this project |
 |---------|----------------------|
 | **express** | HTTP server, routing, JSON middleware. |
-| **dotenv** | Load `.env` in `index.js` and in `mtproto-login.mjs`. |
+| **dotenv** | Load `.env` in `index.ts` and in `mtproto-login.ts`. |
 | **telegram** (GramJS) | MTProto client: `TelegramClient`, `StringSession`. |
 | **big-integer** | Safe integer type for `sendMessage` peer when using numeric user id. |
-| **nodemon** | Dev dependency: auto-restart on file changes (`npm start`). |
+| **tsx** | Dev dependency: run/watch TypeScript (`npm run dev`). |
 
 Runtime: **Node.js 18+** recommended (global **`fetch`** for Bot API calls).
 

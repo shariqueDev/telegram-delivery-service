@@ -21,15 +21,15 @@ This repository is a **POC backend**. It does not include a game client, databas
 
 | Path | Role |
 |------|------|
-| `index.js` | Process entry: starts HTTP server. |
-| `index.js` | Loads `.env`, `loadEnv`, `createApp`, listens on `PORT`. |
-| `src/app.js` | Express app: CORS, JSON body, routes, 404, error handler. |
+| `index.ts` / `dist/index.js` | Process entry: starts HTTP server. |
+| `index.ts` | Loads `.env`, `loadEnv`, `createApp`, listens on `PORT`. |
+| `src/app.ts` | Express app: CORS, JSON body, routes, 404, error handler. |
 | `src/config/` | Environment types and `loadEnv()`. |
 | `src/middleware/` | CORS helper. |
 | `src/routes/` | HTTP route wiring (`health`, `telegram` deliver routes). |
 | `src/controllers/` | Parse request body, map service result to HTTP JSON. |
 | `src/services/` | **Bot** delivery (`telegramClient`, `telegramDeliverService`) and **MTProto** delivery (`mtprotoDeliverService`). |
-| `scripts/mtproto-login.mjs` | One-time interactive login; prints a session string to paste into `config/mtproto-accounts.json`. |
+| `scripts/mtproto-login.ts` | One-time interactive login; prints a session string to paste into `config/mtproto-accounts.json`. |
 
 ---
 
@@ -131,12 +131,13 @@ cd backend
 npm install
 cp .env.example .env   # Windows: copy .env.example .env
 # edit .env
-npm start
+npm run dev
 ```
 
-Production-style (no file watcher):
+TypeScript is compiled to `dist/`. Production-style (no file watcher) after a build:
 
 ```bash
+npm run build
 npm run start:prod
 ```
 
@@ -182,7 +183,7 @@ npm run start:prod
 - **dotenv** — Load `.env`  
 - **telegram** (GramJS) — MTProto client  
 - **big-integer** — Safe Telegram user ids for GramJS  
-- **nodemon** — Dev restarts (dev dependency optional in prod)
+- **typescript** / **tsx** — TypeScript build and dev (watch) runs
 
 ---
 
