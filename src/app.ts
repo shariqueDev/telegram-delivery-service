@@ -6,7 +6,6 @@ import { createTelegramDeliverService } from "./services/telegramDeliverService.
 import { createMtprotoDeliverService } from "./services/mtprotoDeliverService.js";
 import { createMtprotoAccountPool } from "./services/mtproto/mtprotoAccountPool.js";
 import { createIdempotencyStore } from "./services/mtproto/idempotencyStore.js";
-import { createMtprotoMetrics } from "./services/mtproto/mtprotoMetrics.js";
 import { createRootRouter } from "./routes/index.js";
 import type { AppEnv } from "./config/env.js";
 
@@ -21,18 +20,11 @@ export function createApp(env: AppEnv) {
 
   const mtprotoAccountPool = createMtprotoAccountPool(env);
   const idempotencyStore = createIdempotencyStore(env.idempotencyTtlMs);
-  const mtprotoMetrics = createMtprotoMetrics();
 
   const telegramDeliverService = createTelegramDeliverService(env);
   const mtprotoDeliverService = createMtprotoDeliverService(env, {
     pool: mtprotoAccountPool,
     idempotencyStore,
-    metrics: mtprotoMetrics,
-  });
-
-  app.get("/metrics", async (_req, res) => {
-    res.set("Content-Type", mtprotoMetrics.registry.contentType);
-    res.end(await mtprotoMetrics.registry.metrics());
   });
 
   app.use(

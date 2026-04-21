@@ -4,7 +4,6 @@ import { classifyTelegramSendError, type ClassifiedError } from "./mtproto/teleg
 import type { AppEnv } from "../config/env.js";
 import type { MtprotoAccountPool } from "./mtproto/mtprotoAccountPool.js";
 import type { IdempotencyStore } from "./mtproto/idempotencyStore.js";
-import type { MtprotoMetrics } from "./mtproto/mtprotoMetrics.js";
 
 function isValidTelegramUserId(raw: unknown): boolean {
   const s = String(raw).trim();
@@ -33,7 +32,6 @@ function isMtprotoConfigured(env: AppEnv): boolean {
 export interface MtprotoDeliverDeps {
   pool: MtprotoAccountPool;
   idempotencyStore: IdempotencyStore;
-  metrics: MtprotoMetrics;
 }
 
 export type MtprotoDeliverFailure = { ok: false; httpStatus: number; error: string };
@@ -43,7 +41,7 @@ export type MtprotoDeliverSuccess = Record<string, unknown> & { ok: true };
 export type MtprotoDeliverResult = MtprotoDeliverFailure | MtprotoDeliverSuccess;
 
 export function createMtprotoDeliverService(env: AppEnv, deps: MtprotoDeliverDeps) {
-  const { pool, idempotencyStore, metrics } = deps;
+  const { pool, idempotencyStore } = deps;
 
   return {
     async deliverLink({
@@ -105,8 +103,6 @@ export function createMtprotoDeliverService(env: AppEnv, deps: MtprotoDeliverDep
       const ordered = pool.selectAccountsRoundRobin();
 
       if (ordered.length === 0) {
-        metrics.deliveriesTotal.inc({ status: "failure" });
-        metrics.attemptsHistogram.observe(0);
         const snap = pool.getSnapshot();
         return {
           ok: true,
@@ -130,9 +126,6 @@ export function createMtprotoDeliverService(env: AppEnv, deps: MtprotoDeliverDep
         attempts++;
         try {
           await acc.sendMessage(peer, message);
-          metrics.attempts.inc({ account_id: acc.id, result: "success" });
-          metrics.deliveriesTotal.inc({ status: "success" });
-          metrics.attemptsHistogram.observe(attempts);
 
           const successPayload: Record<string, unknown> = {
             delivered: true,
@@ -166,11 +159,9 @@ export function createMtprotoDeliverService(env: AppEnv, deps: MtprotoDeliverDep
           console.info(
             `[INFO] Attempt ${attempts}: ${acc.id} → ${c.reason}${c.telegramCode ? ` (${c.telegramCode})` : ""}`,
           );
-          metrics.attempts.inc({ account_id: acc.id, result: c.reason });
 
           if (c.floodSeconds != null) {
             acc.markFloodWait(c.floodSeconds);
-            metrics.floodWait.inc({ account_id: acc.id });
           }
 
           if (c.disableAccount) {
@@ -184,18 +175,7 @@ export function createMtprotoDeliverService(env: AppEnv, deps: MtprotoDeliverDep
             );
           }
 
-          if (
-            c.reason === "invalid_username" ||
-            c.reason === "peer_invalid" ||
-            c.reason === "peer_unresolved"
-          ) {
-            metrics.invalidUsername.inc();
-          }
-
           if (c.permanent) {
-            metrics.deliveriesTotal.inc({ status: "failure" });
-            metrics.attemptsHistogram.observe(attempts);
-
             const failPayload: Record<string, unknown> = {
               delivered: false,
               reason: c.reason,
@@ -224,9 +204,6 @@ export function createMtprotoDeliverService(env: AppEnv, deps: MtprotoDeliverDep
           }
         }
       }
-
-      metrics.deliveriesTotal.inc({ status: "failure" });
-      metrics.attemptsHistogram.observe(attempts);
 
       const failPayload: Record<string, unknown> = {
         delivered: false,
